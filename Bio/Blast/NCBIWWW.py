@@ -40,7 +40,6 @@ tool = "biopython"
 
 
 NCBI_BLAST_URL = "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
-NCBI_BLAST_MAX_ORGANISMS = 20
 
 
 @function_with_previous
@@ -211,12 +210,6 @@ def qblast(
     }
 
     organisms = {} if organisms is None else organisms
-
-    if len(organisms) > NCBI_BLAST_MAX_ORGANISMS:
-        raise ValueError(
-            f"The 'organisms' parameter can contain up to {NCBI_BLAST_MAX_ORGANISMS} entries."
-        )
-
     for i, (organism, exclude) in enumerate(organisms.items()):
         if not isinstance(organism, str):
             raise TypeError("The keys of the 'organisms' parameter must be strings.")
