@@ -40,6 +40,7 @@ tool = "biopython"
 
 
 NCBI_BLAST_URL = "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
+NCBI_BLAST_MAX_ORGANISMS = 20
 
 
 @function_with_previous
@@ -94,6 +95,7 @@ def qblast(
     template_length=None,
     username="blast",
     password=None,
+    organisms=None,
 ):
     """BLAST search using NCBI's QBLAST server or a cloud service provider.
 
@@ -207,6 +209,24 @@ def qblast(
         "WORD_SIZE": word_size,
         "CMD": "Put",
     }
+
+    organisms = {} if organisms is None else organisms
+
+    if len(organisms) > NCBI_BLAST_MAX_ORGANISMS:
+        raise ValueError(
+            f"The 'organisms' parameter can contain up to {NCBI_BLAST_MAX_ORGANISMS} entries."
+        )
+
+    for i, (organism, exclude) in enumerate(organisms.items()):
+        if not isinstance(organism, str):
+            raise TypeError("The keys of the 'organisms' parameter must be strings.")
+
+        if not isinstance(exclude, bool):
+            raise TypeError("The values of the 'organism' parameter must be bool.")
+
+        suffix = "" if i == 0 else f"{i + 1}"
+        parameters[f"EQ_MENU{suffix}"] = organism
+        parameters[f"ORG_EXCLUDE{suffix}"] = "yes" if exclude else "no"
 
     if password is not None:
         # handle authentication for BLAST cloud
