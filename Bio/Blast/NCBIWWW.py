@@ -95,6 +95,7 @@ def qblast(
     username="blast",
     password=None,
     organisms=None,
+    max_num_seq=500,
 ):
     """BLAST search using NCBI's QBLAST server or a cloud service provider.
 
@@ -207,6 +208,7 @@ def qblast(
         "UNGAPPED_ALIGNMENT": ungapped_alignment,
         "WORD_SIZE": word_size,
         "CMD": "Put",
+        "MAX_NUM_SEQ": max_num_seq,
     }
 
     organisms = {} if organisms is None else organisms
@@ -217,9 +219,12 @@ def qblast(
         if not isinstance(exclude, bool):
             raise TypeError("The values of the 'organism' parameter must be bool.")
 
-        suffix = "" if i == 0 else f"{i + 1}"
+        suffix = "" if i == 0 else f"{i}"
         parameters[f"EQ_MENU{suffix}"] = organism
-        parameters[f"ORG_EXCLUDE{suffix}"] = "yes" if exclude else "no"
+
+        if exclude:
+            parameters[f"ORG_EXCLUDE{suffix}"] = "on"
+        parameters["NUM_ORG"] = i + 1
 
     if password is not None:
         # handle authentication for BLAST cloud
