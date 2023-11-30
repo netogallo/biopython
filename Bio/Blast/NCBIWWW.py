@@ -46,6 +46,32 @@ NCBI_BLAST_URL = "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
 ORGANISM_REGEX = re.compile(r".+\s+\(taxid:\d+\)\s*")
 
 
+class QBlastStatusMonitor:
+    """Monitor for BLAST requests.
+
+    Class that allows monitoring the state of a qblast request.
+    It provides callbacks that are called throught the lifetime
+    of a qblast request.
+
+    Members:
+    on_status           Callback when status is received
+    set_status_request  Callback to inform the url to be used
+    on_timeout          Callback when a timeout occurs
+    """
+
+    def on_status(self, payload: str) -> None:
+        """Inform whenever a status is received from BLAST."""
+        pass
+
+    def set_status_request(self, url: str, msg: bytes) -> None:
+        """Inform the monitor how the status is being fetched."""
+        pass
+
+    def on_timeout(self, e: TimeoutError) -> None:
+        """Inform whenever a timeout occurs when querying the status."""
+        pass
+
+
 @function_with_previous
 def qblast(
     program,
@@ -100,6 +126,8 @@ def qblast(
     password=None,
     organisms=None,
     max_num_seq=500,
+    status_timeout=None,
+    status_monitor=None,
 ):
     """BLAST search using NCBI's QBLAST server or a cloud service provider.
 
@@ -221,6 +249,16 @@ def qblast(
         "MAX_NUM_SEQ": max_num_seq,
     }
 
+    if status_monitor is not None and not isinstance(
+        status_monitor, QBlastStatusMonitor
+    ):
+        raise ValueError(
+            "The parameter 'status_monitor' must be a subclass of 'QBlastStatusMonitor'"
+        )
+
+    if status_monitor is None:
+        status_monitor = QBlastStatusMonitor()
+
     organisms = {} if organisms is None else organisms
     for i, (organism, exclude) in enumerate(organisms.items()):
         if not isinstance(organism, str):
@@ -288,6 +326,8 @@ def qblast(
     parameters = {key: value for key, value in parameters.items() if value is not None}
     message = urlencode(parameters).encode()
 
+    status_monitor.set_status_request(url_base, message)
+
     # Poll NCBI until the results are ready.
     # https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=DeveloperInfo
     # 1. Do not contact the server more often than once every 10 seconds.
@@ -301,6 +341,7 @@ def qblast(
     # will take longer thus at least 70s with delay. Therefore,
     # start with 20s delay, thereafter once a minute.
     delay = 20  # seconds
+    remaining_timeout_attempts = 10
     while True:
         current = time.time()
         wait = qblast.previous + delay - current
@@ -315,7 +356,16 @@ def qblast(
             delay = 60
 
         request = Request(url_base, message, {"User-Agent": "BiopythonClient"})
-        handle = urlopen(request)
+
+        try:
+            handle = urlopen(request, timeout=status_timeout)
+        except TimeoutError as e:
+            if remaining_timeout_attempts <= 0:
+                raise e
+            else:
+                remaining_timeout_attempts -= 1
+                status_monitor.on_timeout(e)
+                continue
         results = handle.read().decode()
 
         # Can see an "\n\n" page while results are in progress,
@@ -330,6 +380,8 @@ def qblast(
         status = results[i + len("Status=") : j].strip()
         if status.upper() == "READY":
             break
+
+        status_monitor.on_status(results)
     return StringIO(results)
 
 
